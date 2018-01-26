@@ -103,6 +103,19 @@ class Hal(object):
         return m
 
     @staticmethod
+    def makeExternalLed(port, regulated, direction, side=None):
+        try:
+            # module mode has to be manually set
+            lp = ev3dev.LegoPort(port)
+            lp.mode = 'led'
+            m = ev3dev.Led(name_pattern = port+'*')
+        except (AttributeError, OSError):
+            logger.info('no external led connected to port [%s]', port)
+            logger.exception("HW Config error")
+            m = None
+        return m
+
+    @staticmethod
     def makeColorSensor(port):
         try:
             s = ev3dev.ColorSensor(port)
@@ -381,8 +394,13 @@ class Hal(object):
         m.run_forever(speed_sp=self.scaleSpeed(m, clamp(value, -100, 100)))
 
     def turnOnUnregulatedMotor(self, port, value):
-        value = clamp(value, -100, 100)
-        self.cfg['actors'][port].run_direct(duty_cycle_sp=int(value))
+        m = self.cfg['actors'][port]
+        if type(m) == ev3dev.Led:
+            value = clamp(value, 0, 100)
+            m.brightness = value
+        else:
+            value = clamp(value, -100, 100)
+            m.run_direct(duty_cycle_sp=int(value))
 
     def setRegulatedMotorSpeed(self, port, value):
         m = self.cfg['actors'][port]
@@ -391,8 +409,13 @@ class Hal(object):
         m.run_forever(speed_sp=self.scaleSpeed(m, clamp(value, -100, 100)))
 
     def setUnregulatedMotorSpeed(self, port, value):
-        value = clamp(value, -100, 100)
-        self.cfg['actors'][port].duty_cycle_sp = int(value)
+        m = self.cfg['actors'][port]
+        if type(m) == ev3dev.Led:
+            value = clamp(value, 0, 100)
+            m.brightness = value
+        else:
+            value = clamp(value, -100, 100)
+            m.duty_cycle_sp = int(value)
 
     def getRegulatedMotorSpeed(self, port):
         m = self.cfg['actors'][port]
@@ -420,6 +443,9 @@ class Hal(object):
         for file in glob.glob('/sys/class/tacho-motor/motor*/command'):
             with open(file, 'w') as f:
                 f.write('stop')
+        for file in glob.glob('/sys/class/leds/out*/brightness'):
+            with open(file, 'w') as f:
+                f.write('0')
 
     def regulatedDrive(self, left_port, right_port, reverse, direction, speed_pct):
         # direction: forward, backward
